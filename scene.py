@@ -41,7 +41,7 @@ class ActionNodes(Scene):
             idle, lever1, lever2, lever1_text, 
             lever2_text, idle_text, rewards, partition
         )
-        self.wait(1)
+        #self.wait(1)
         
         def highlight_node(mob):
             self.play(mob.animate.set_stroke(GREEN, width=6, opacity=1))

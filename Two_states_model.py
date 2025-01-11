@@ -12,7 +12,8 @@ class Agent:
         self.action_history = []
 
     def gen_states(self, nb_actions = 50):
-        """Generate active and idle states
+        """
+        Generate active and idle states based on normal distribution
 
         Returns:
             ndarray: states
@@ -53,13 +54,13 @@ mouse1.random_policy()
 
 agents = mouse0, mouse1
 
+# Adjust, for all agents, the state and action sizes to max size
 target_size = max(mouse0.action_history.size, mouse1.action_history.size)
-
 for agent in agents:
-    # Adjust, for all agents, the state and action sizes to max size
     agent.states = np.pad(agent.states, (0, target_size - agent.states.size), constant_values=0)
     agent.action_history = np.pad(agent.action_history, (0, target_size - agent.action_history.size), constant_values=np.nan)
 
+# Declare time window and compute joint rewards
 tw_duration = 4
 joint_rewards = 0 
 t = 0
