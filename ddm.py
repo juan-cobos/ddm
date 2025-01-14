@@ -16,21 +16,27 @@ from matplotlib import cm
 
 np.random.seed(seed=42)
 
-class sDDM():
-    def __init__(self, learning_rate=0.001, decay_rate=0.1):
-        self.v_right = 0.5
-        self.v_left = 0.5
+class DDM():
+    def __init__(self, learning_rate=0.001, decay_rate=1):
+        self.v_left = 0
+        self.v_right = 1
         self.convergence_rate = 1
         self.learning_rate = learning_rate
         self.decay_rate = decay_rate
         self.bias = 0
         self.dt = 10**(-3)
-        self.time_window = (5*1000, 15*1000)
+        self.time_range = (1*1000, 4*1000)
+        self.bound_scaling = 1
+
+        self.reset_experiment_params()
+        self.reset_trial_params()
+
+    def reset_experiment_params(self):
         self.times = []
-        self.reset_params()
-
-
-    def reset_params(self):
+        self.n_rewards = 0
+        self.total_rvs = []        
+    
+    def reset_trial_params(self):
         self.relative_value_signal = 0
         self.rvs_lst = [0]
         self.t = 0
@@ -39,21 +45,22 @@ class sDDM():
         return np.random.normal(mean, std) * np.sqrt(self.dt)
 
     def update_value(self, v):
-        if self.t >= self.time_window[0] and self.t <= self.time_window[1]: # If within time_window
+        if self.t >= self.time_range[0] and self.t <= self.time_range[1]: # If within time_range
             reward = 1
-        else: # Outside time_window
+            self.n_rewards += 1
+        else: # Outside time_range
             reward = 0
-        v += self.learning_rate * (reward - v)
+        #v += self.learning_rate * (reward - v)
         return v
 
-    def run(self, n_trials = 100):
+    def run(self, n_trials = 100, plot=False):
         trial = 0
+        side_preference_lst = []
 
-        side_preference_lst = [] 
-
-        #fig, ax = plt.subplots(3, 1, figsize=(24, 12))
-        #fig.tight_layout(pad=5.0)
-
+        # Params must be reseted before each simulation
+        self.reset_experiment_params()
+        self.reset_trial_params()
+        
         while trial <= n_trials:
 
             drift_rate = self.convergence_rate * (self.v_left - self.v_right) * self.dt
@@ -61,7 +68,7 @@ class sDDM():
             self.rvs_lst.append(self.relative_value_signal)
 
             # Set boundaries
-            bounding_decay = np.exp(-self.decay_rate * self.t * self.dt)
+            bounding_decay = self.bound_scaling * np.exp(-self.decay_rate * self.t * self.dt * (self.v_left + self.v_right)) 
             upper_bound = bounding_decay
             lower_bound = -bounding_decay
 
@@ -76,51 +83,92 @@ class sDDM():
                     side_preference_lst.append(-1)
         
                 # Save trial data 
-                #ax[0].plot(self.rvs_lst, label= "Relative Value Signal")
+                self.total_rvs.append(self.rvs_lst)
                 self.times.append(self.t)
                 # Reset trial params
-                self.reset_params()
+                self.reset_trial_params()
                 trial += 1
 
             self.t += 1
 
+        print("Rewards obtained:", self.n_rewards)
         side_preference_score = np.sum(side_preference_lst) / len(side_preference_lst)
 
-        max_rt = max(self.times)
-        min_rt = min(self.times)
+        if plot:
 
-        loc, scale = wald.fit(self.times)    
-        x = np.linspace(min_rt, max_rt, 100)
-        theory = wald.pdf(x, loc, scale)
+            fig, ax = plt.subplots(3, 1, figsize=(24, 12))
+            fig.tight_layout(pad=5.0)
+            max_rt = max(self.times)
+            min_rt = min(self.times)
 
-        """
-        ax[0].tick_params(axis='both', which='major', labelsize=18)
-        ax[0].set_xticks(np.arange(0, max_rt, round(max_rt/10)), labels=np.arange(0, max_rt, round(max_rt/10)))
-        ax[0].set_xlabel("Time (ms)", fontsize=18)
-        ax[0].set_ylabel("Relative Value Signal", fontsize=18)
-        ax[0].axhline(1, linestyle="--", color="black")
-        ax[0].axhline(-1, linestyle="--", color="black")
+            loc, scale = wald.fit(self.times)    
+            x = np.linspace(min_rt, max_rt, 100)
+            theory = wald.pdf(x, loc, scale)
 
-        #ax[1].hist(self.times, density=True, stacked=True) # Plot density function to show the Wald fit
-        #ax[1].plot(x, theory)
-        ax[1].set_xlabel("Time (ms)", fontsize=18)
-        ax[1].tick_params(axis='both', which='major', labelsize=18)
+            for rvs in self.total_rvs:
+                ax[0].plot(rvs)
+
+            ax[0].tick_params(axis='both', which='major', labelsize=18)
+            ax[0].set_xticks(np.arange(0, max_rt, round(max_rt/10)), labels=np.arange(0, max_rt, round(max_rt/10)))
+            ax[0].set_xlabel("Time (ms)", fontsize=18)
+            ax[0].set_ylabel("Relative Value Signal", fontsize=18)
+            #ax[0].axhline(1, linestyle="--", color="black")
+            #ax[0].axhline(-1, linestyle="--", color="black")
         
-        hist, bin_edges = np.histogram(self.times, )
-        bin_probability = hist / np.sum(hist)
-        bin_middles = (bin_edges[1:]+bin_edges[:-1])/2.
-        # Compute the bin-width
-        bin_width = bin_edges[1]-bin_edges[0]
-        # Plot the histogram as a bar plot
-        ax[1].bar(bin_middles, bin_probability, width=bin_width)
+            hist, bin_edges = np.histogram(self.times, )
+            bin_probability = hist / np.sum(hist)
+            bin_middles = (bin_edges[1:]+bin_edges[:-1])/2.
+            # Compute the bin-width
+            bin_width = bin_edges[1]-bin_edges[0]
+            # Plot the histogram as a bar plot
+            ax[1].bar(bin_middles, bin_probability, width=bin_width)
+            ax[1].axvline(self.time_range[0], c="black", linestyle="--")
+            ax[1].axvline(self.time_range[1], c="black", linestyle="--")
+            #ax[1].hist(self.times, density=True, stacked=True) # Plot density function to show the Wald fit
+            #ax[1].plot(x, theory)
+            ax[1].set_ylabel("Probability", fontsize=18)
+            ax[1].set_xlabel("Time (ms)", fontsize=18)
+            ax[1].tick_params(axis='both', which='major', labelsize=18)
+                    
+            ax[2].plot(side_preference_lst)
 
-        ax[2].plot(side_preference_lst)
+            plt.suptitle(f"sDDM LR={self.learning_rate} DR={self.decay_rate}",fontsize=24)
+            plt.show()
 
-        plt.suptitle(f"sDDM LR={self.learning_rate} DR={self.decay_rate}",fontsize=24)
-        plt.show()
-        """
+model = DDM()
+#model.run(plot=True)
 
 
+v = [0.1, 0.2, 0.5, 0.7, 0.9]
+v_left = [0.1, 0.2, 0.5, 0.7, 0.9]
+v_right = [0.9, 0.7, 0.5, 0.2, 0.1]
+
+times = []
+n_rewards = []
+for vi in v:
+    model.v_left = vi
+    model.v_right = vi
+    model.run()
+    mean_time = np.mean(model.times)
+    print(mean_time)
+    n_rewards.append(model.n_rewards)
+    times.append(mean_time)
+
+fig, ax = plt.subplots(2, 1)
+ax[0].scatter(v, times)
+ax[0].set_ylabel("Mean time (ms)",)
+ax[0].set_xlabel("Value",)
+ax[0].axhline(model.time_range[0], c="black", linestyle="--")
+ax[0].axhline(model.time_range[1], c="black", linestyle="--")
+
+ax[1].scatter(v, n_rewards)
+ax[1].set_ylabel("Rewards",)
+ax[1].set_xlabel("Value",)
+
+plt.savefig("Fixed values.png")
+plt.show()
+
+"""
 learning_rates = [0.1, 0.05, 0.005, 0.001]
 decay_rates = [0.1, 0.05, 0.005, 0.001]
 mean_lst = []
@@ -163,7 +211,7 @@ ax.tick_params(axis='both', which='major', labelsize=18)
 ax.set_xlabel("Learning rate", fontsize=18)
 ax.set_ylabel("Decay rate", fontsize=18)
 plt.show()
-
+"""
 
 
 """
