@@ -6,12 +6,13 @@ import time
 
 np.random.seed(42)
 
-model = DDM()
+model = SimpleDDM()
 X = model.trial()
+
 fig, ax = plt.subplots(1, figsize=(24, 12))
 t = np.arange(0, X.shape[0])
-print("Comparing times:", model.t, X.shape[0])
-#ax.plot(t, X)
+
+ax.plot(t, X)
 animated_plot, = ax.plot([], [])
 
 def init_plot():
