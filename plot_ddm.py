@@ -1,12 +1,12 @@
 import matplotlib.pyplot as plt
 from matplotlib.animation import FuncAnimation
 import numpy as np
-from simple_ddm import *
+from ddm_models import *
 import time
 
 np.random.seed(42)
 
-model = SimpleDDM()
+model = DriftDiffusionModel()
 X = model.trial()
 
 fig, ax = plt.subplots(1, figsize=(24, 12))
