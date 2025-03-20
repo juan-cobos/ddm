@@ -42,15 +42,6 @@ class DDM():
     def noise(self, mean=0, std=0.1):
         return np.random.normal(mean, std) * np.sqrt(self.dt)
 
-    def update_value(self, v):
-        if self.t >= self.time_range[0] and self.t <= self.time_range[1]: # If within time_range
-            reward = 1
-            self.n_rewards += 1
-        else: # Outside time_range
-            reward = 0
-        v += self.learning_rate * (reward - v)
-        return v
-
     def run(self, n_trials = 100, plot=False):
         trial = 0
         side_preference_lst = []
@@ -66,20 +57,31 @@ class DDM():
             self.rvs_lst.append(self.relative_value_signal)
 
             # Set boundaries
-            bounding_decay = self.bound_scaling * np.exp(-self.decay_rate * self.t * self.dt * (self.v_left + self.v_right)) 
-            upper_bound = bounding_decay
-            lower_bound = -bounding_decay
+            def compute_bounds():
+                bound = self.bound_scaling * np.exp(-self.decay_rate * (self.v_left + self.v_right) * self.t * self.dt)
+                return bound, -bound
+
+            upper_bound, lower_bound = compute_bounds()
 
             if self.relative_value_signal >= upper_bound or self.relative_value_signal <= lower_bound: # If it crosses the threshold
-                    
-                if self.relative_value_signal >= upper_bound : # Chose left action
-                    self.v_left = self.update_value(self.v_left)
-                    side_preference_lst.append(1)
 
-                elif self.relative_value_signal <= lower_bound: # Chose right action
-                    self.v_right = self.update_value(self.v_right)
-                    side_preference_lst.append(-1)
-        
+                def update_value():
+                    if  self.time_range[0] <= self.t <= self.time_range[1]:  # If within time_range
+                        reward = 1
+                        self.n_rewards += 1
+                    else:  # Outside time_range
+                        reward = 0
+
+                    if self.relative_value_signal >= upper_bound:  # Chose left action
+                        self.v_left += self.learning_rate * (reward - self.v_left)
+                        side_preference_lst.append(1)
+
+                    elif self.relative_value_signal <= lower_bound:  # Chose right action
+                        self.v_right += self.learning_rate * (reward - self.v_right)
+                        side_preference_lst.append(-1)
+
+                update_value()
+
                 # Save trial data 
                 self.action_time.append(self.t)
                 self.total_rvs.append(self.rvs_lst)
