@@ -1,4 +1,7 @@
+import random
 import numpy as np
+
+random.seed(43)
 
 class DriftDiffusionModel:
 
@@ -72,12 +75,65 @@ class FullDDM:
         self.X = 0
         self.t = 1
 
+class RLARD: # Advantage Racing Diffusion
+    def __init__(self):
+        self.x1 = 0
+        self.x2 = 0
+
+        self.v0 = 1
+        self.Q1 = random.random()
+        self.Q2 = random.random()
+        self.wd = random.random()
+        self.ws = random.random()
+        self.bound = 1
+
+        self.t = 0
+        self.dt = 10 ** (-3)
+
+        self.learning_rate = 0.1
+
+    def step(self,):
+        v0, Q1, Q2, wd, ws = self.v0, self.Q1, self.Q2, self.wd, self.ws
+        self.x1 += (v0 + wd * (Q1 - Q2) + ws * (Q1 + Q2)) * self.dt + self.noise()
+        self.x2 += (v0 + wd * (Q2 - Q1) + ws * (Q1 + Q2)) * self.dt + self.noise()
+        self.t += 1
+
+    def trial(self,): # Until convergence
+        self.reset_paramaters()
+        x1 = [0]
+        x2 = [0]
+        while self.x1 < self.bound and self.x2 < self.bound:
+            self.step()
+            x1 += [self.x1]
+            x2 += [self.x2]
+        return np.array(x1), np.array(x2)
+
+    def noise(self, mean=0, std=0.1):
+        return np.random.normal(mean, std) * np.sqrt(self.dt, dtype=np.float32)
+
+    def reset_paramaters(self, ):
+        self.x1 = 0
+        self.x2 = 0
+        self.t = 1
+
+    def update_values(self, reward=1):
+
+        assert self.x1 >= self.bound or self.x2 >= self.bound, "None of the accumulators has reached"
+
+        if self.x1 >= self.x2:
+            self.x1 += self.learning_rate * (reward - self.x1)
+        else:
+            self.x2 += self.learning_rate * (reward - self.x2)
+
+
 class RLDDM:
 
     def __init__(self,):
         self.X = 0
-        self.v1 = 0.5
-        self.v2 = 0.5
+        self.action_time = None
+        self.action_side = None # [-1, 1]
+        self.v1 = 0.5 #random.random()
+        self.v2 = 0.5 #random.random()
         self.drift_rate = 0.1
 
         self.t = 1
@@ -85,8 +141,12 @@ class RLDDM:
 
         self.decay_rate = 0.1
         self.bound = 1
+        self.upper_bound = self.bound * np.exp(-self.decay_rate * (self.v1 + self.v2) * self.t * self.dt)
+        self.lower_bound = -self.upper_bound
 
-        self.learning_rate = 0.01
+        self.rewards = 0
+        self.reward_seq = []
+        self.learning_rate = 0.1
 
     def step(self, ):
         self.X += self.drift_rate * (self.v1 - self.v2) * self.dt + self.noise()
@@ -96,24 +156,23 @@ class RLDDM:
     def trial(self,): # Until convergence
         self.reset_paramaters()
         X = [0]
-        def compute_bounds():
-            bound = self.bound * np.exp(-self.decay_rate * (self.v1 + self.v2) * self.t * self.dt)
-            return bound, -bound
+        def update_bounds():
+            self.upper_bound = self.bound * np.exp(-self.decay_rate * (self.v1 + self.v2) * self.t * self.dt)
+            self.lower_bound = -self.upper_bound
 
-        upper_bound, lower_bound = compute_bounds()
-        while upper_bound > X[-1] > lower_bound:
+        while self.upper_bound > X[-1] > self.lower_bound:
             X += [self.step()]
-            upper_bound, lower_bound = compute_bounds()
-
-        def update_values():
-            # if self.t within interval reward = 1 else reward = 0
-            reward = 0  # Modify if needed based on reward criteria
-            if X[-1] >= upper_bound:
-                self.v1 += self.learning_rate * (reward - self.v1)
-            else:
-                self.v2 += self.learning_rate * (reward - self.v2)
-        #update_values()
+            update_bounds()
         return np.array(X)
+
+    def update_values(self, reward=1):
+        # if self.t within interval reward = 1 else reward = 0
+        self.rewards += reward
+        if self.X >= self.upper_bound:
+            self.v1 += self.learning_rate * (reward - self.v1)
+        elif self.X <= self.lower_bound:
+            self.v2 += self.learning_rate * (reward - self.v2)
+        self.reward_seq.append(reward)
 
     def noise(self, mean=0, std=0.1):
         return np.random.normal(mean, std) * np.sqrt(self.dt, dtype=np.float32)
