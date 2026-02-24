@@ -1,11 +1,12 @@
 import random
+
 import numpy as np
 
 random.seed(43)
 
-class DriftDiffusionModel:
 
-    def __init__(self, ):
+class DriftDiffusionModel:
+    def __init__(self):
         self.X = 0
         self.drift_rate = 0.1
         self.bound = 1
@@ -14,13 +15,13 @@ class DriftDiffusionModel:
         self.t = 1
         self.dt = 10 ** (-3)  # miliseconds
 
-    def step(self,):
+    def step(self):
         drift_rate = self.drift_rate * self.dt
         self.X += drift_rate + self.volatility * self.noise()
         self.t += 1
         return self.X
 
-    def trial(self,): # Until convergence
+    def trial(self):  # Until convergence
         self.reset_paramaters()
         X = [0]
         while X[-1] < self.bound:
@@ -30,14 +31,14 @@ class DriftDiffusionModel:
     def noise(self, mean=0, std=0.1):
         return np.random.normal(mean, std) * np.sqrt(self.dt, dtype=np.float32)
 
-    def reset_paramaters(self,):
+    def reset_paramaters(self):
         self.X = 0
         self.t = 1
 
+
 # TODO: Complete FullDDM and add simpleDDM, consider init -> self.t = 1 or self.t = 0
 class FullDDM:
-    
-    def __init__(self,):
+    def __init__(self):
         self.X = 0
         self.v1 = 0.5
         self.v2 = 0.5
@@ -49,17 +50,18 @@ class FullDDM:
         self.t = 1
         self.dt = 10 ** (-3)  # miliseconds
 
-    def step(self, ):
+    def step(self):
         self.X += self.drift_rate * (self.v1 - self.v2) * self.dt + self.noise()
         self.t += 1
         return self.X
 
-    def trial(self,): # Until convergence
+    def trial(self):  # Until convergence
         self.reset_paramaters()
 
         def compute_bounds():
             bound = self.bound * np.exp(-self.decay_rate * self.t * self.dt)
             return bound, -bound
+
         upper_bound, lower_bound = compute_bounds()
 
         X = [0]
@@ -71,11 +73,12 @@ class FullDDM:
     def noise(self, mean=0, std=0.1):
         return np.random.normal(mean, std) * np.sqrt(self.dt, dtype=np.float32)
 
-    def reset_paramaters(self, ):
+    def reset_paramaters(self):
         self.X = 0
         self.t = 1
 
-class RLARD: # Advantage Racing Diffusion
+
+class RLARD:  # Advantage Racing Diffusion
     def __init__(self):
         self.x1 = 0
         self.x2 = 0
@@ -92,13 +95,13 @@ class RLARD: # Advantage Racing Diffusion
 
         self.learning_rate = 0.1
 
-    def step(self,):
+    def step(self):
         v0, Q1, Q2, wd, ws = self.v0, self.Q1, self.Q2, self.wd, self.ws
         self.x1 += (v0 + wd * (Q1 - Q2) + ws * (Q1 + Q2)) * self.dt + self.noise()
         self.x2 += (v0 + wd * (Q2 - Q1) + ws * (Q1 + Q2)) * self.dt + self.noise()
         self.t += 1
 
-    def trial(self,): # Until convergence
+    def trial(self):  # Until convergence
         self.reset_paramaters()
         x1 = [0]
         x2 = [0]
@@ -111,14 +114,16 @@ class RLARD: # Advantage Racing Diffusion
     def noise(self, mean=0, std=0.1):
         return np.random.normal(mean, std) * np.sqrt(self.dt, dtype=np.float32)
 
-    def reset_paramaters(self, ):
+    def reset_paramaters(self):
         self.x1 = 0
         self.x2 = 0
         self.t = 1
 
     def update_values(self, reward=1):
 
-        assert self.x1 >= self.bound or self.x2 >= self.bound, "None of the accumulators has reached"
+        assert self.x1 >= self.bound or self.x2 >= self.bound, (
+            "None of the accumulators has reached"
+        )
 
         if self.x1 >= self.x2:
             self.x1 += self.learning_rate * (reward - self.x1)
@@ -127,13 +132,12 @@ class RLARD: # Advantage Racing Diffusion
 
 
 class RLDDM:
-
-    def __init__(self,):
+    def __init__(self):
         self.X = 0
         self.action_time = None
-        self.action_side = None # [-1, 1]
-        self.v1 = 0.5 #random.random()
-        self.v2 = 0.5 #random.random()
+        self.action_side = None  # [-1, 1]
+        self.v1 = 0.5  # random.random()
+        self.v2 = 0.5  # random.random()
         self.drift_rate = 0.1
 
         self.t = 1
@@ -141,28 +145,33 @@ class RLDDM:
 
         self.decay_rate = 0.1
         self.bound = 1
-        self.upper_bound = self.bound * np.exp(-self.decay_rate * (self.v1 + self.v2) * self.t * self.dt)
+        self.upper_bound = self.bound * np.exp(
+            -self.decay_rate * (self.v1 + self.v2) * self.t * self.dt
+        )
         self.lower_bound = -self.upper_bound
 
         self.rewards = 0
         self.reward_seq = []
         self.learning_rate = 0.1
 
-    def step(self, ):
+    def update_bounds(self):
+        self.upper_bound = self.bound * np.exp(
+            -self.decay_rate * (self.v1 + self.v2) * self.t * self.dt
+        )
+        self.lower_bound = -self.upper_bound
+
+    def step(self):
         self.X += self.drift_rate * (self.v1 - self.v2) * self.dt + self.noise()
         self.t += 1
         return self.X
 
-    def trial(self,): # Until convergence
+    def trial(self):  # Until convergence
         self.reset_paramaters()
         X = [0]
-        def update_bounds():
-            self.upper_bound = self.bound * np.exp(-self.decay_rate * (self.v1 + self.v2) * self.t * self.dt)
-            self.lower_bound = -self.upper_bound
 
         while self.upper_bound > X[-1] > self.lower_bound:
             X += [self.step()]
-            update_bounds()
+            self.update_bounds()
         return np.array(X)
 
     def update_values(self, reward=1):
@@ -177,13 +186,17 @@ class RLDDM:
     def noise(self, mean=0, std=0.1):
         return np.random.normal(mean, std) * np.sqrt(self.dt, dtype=np.float32)
 
-    def reset_paramaters(self, ):
+    def reset_paramaters(
+        self,
+    ):
         self.X = 0
         self.t = 1
 
-class MetaRLDDM:
 
-    def __init__(self,):
+class MetaRLDDM:
+    def __init__(
+        self,
+    ):
         self.X = 0
         self.v1 = 0.5
         self.v2 = 0.5
@@ -199,16 +212,19 @@ class MetaRLDDM:
         self.learning_rate = 0.1
         self.cumulative_noise = 0
 
-    def step(self, ):
+    def step(self):
         self.X += self.drift_rate * (self.v1 - self.v2) * self.dt + self.noise()
         self.t += 1
         return self.X
 
-    def trial(self,): # Until convergence
+    def trial(self):  # Until convergence
         self.reset_paramaters()
         X = [0]
+
         def compute_bounds():
-            bound = self.bound * np.exp(-self.decay_rate * (self.v1 + self.v2) * self.t * self.dt) # TODO: Overflow error
+            bound = self.bound * np.exp(
+                -self.decay_rate * (self.v1 + self.v2) * self.t * self.dt
+            )  # TODO: Overflow error
             return bound, -bound
 
         upper_bound, lower_bound = compute_bounds()
@@ -224,7 +240,8 @@ class MetaRLDDM:
                 self.v1 += alpha * (reward - self.v1)
             else:
                 self.v2 += alpha * (reward - self.v2)
-        #update_values()
+
+        # update_values()
         return np.array(X)
 
     def noise(self, mean=0, std=0.1):
@@ -232,14 +249,13 @@ class MetaRLDDM:
         self.cumulative_noise += abs(noise)
         return noise
 
-    def reset_paramaters(self, ):
+    def reset_paramaters(self):
         self.X = 0
         self.t = 1
 
 
 class BUSA:
-
-    def __init__(self, ):
+    def __init__(self):
         self.X = 0
         self.v1 = 0.5
         self.v2 = 0.5
@@ -249,12 +265,15 @@ class BUSA:
         self.t = 1
         self.dt = 10 ** (-3)
 
-    def step(self,):
-        self.X += self.urgency * (self.v1 + self.v2) * (self.v1 - self.v2) * self.dt + self.noise()
+    def step(self):
+        self.X += (
+            self.urgency * (self.v1 + self.v2) * (self.v1 - self.v2) * self.dt
+            + self.noise()
+        )
         self.t += 1
         return self.X
 
-    def trial(self,): # Until convergence
+    def trial(self):  # Until convergence
         self.reset_parameters()
         X = [0]
         while X[-1] < self.bound_left and X[-1] > self.bound_right:
