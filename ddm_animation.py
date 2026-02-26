@@ -2,7 +2,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 from matplotlib.animation import FuncAnimation
 
-from ddm_models import DriftDiffusionModel
+from prev_models.ddm_models import DriftDiffusionModel
 
 np.random.seed(42)
 
