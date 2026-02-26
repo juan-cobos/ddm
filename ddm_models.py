@@ -5,7 +5,12 @@ import numpy as np
 random.seed(43)
 
 
-class DriftDiffusionModel:
+class BaseDDM:
+    def noise(self, mean=0, std=0.1):
+        return np.random.normal(mean, std) * np.sqrt(self.dt, dtype=np.float32)
+
+
+class DriftDiffusionModel(BaseDDM):
     def __init__(self):
         self.X = 0
         self.drift_rate = 0.1
@@ -28,16 +33,13 @@ class DriftDiffusionModel:
             X += [self.step()]
         return np.array(X)
 
-    def noise(self, mean=0, std=0.1):
-        return np.random.normal(mean, std) * np.sqrt(self.dt, dtype=np.float32)
-
     def reset_paramaters(self):
         self.X = 0
         self.t = 1
 
 
 # TODO: Complete FullDDM and add simpleDDM, consider init -> self.t = 1 or self.t = 0
-class FullDDM:
+class FullDDM(BaseDDM):
     def __init__(self):
         self.X = 0
         self.v1 = 0.5
@@ -70,15 +72,12 @@ class FullDDM:
             upper_bound, lower_bound = compute_bounds()
         return np.array(X)
 
-    def noise(self, mean=0, std=0.1):
-        return np.random.normal(mean, std) * np.sqrt(self.dt, dtype=np.float32)
-
     def reset_paramaters(self):
         self.X = 0
         self.t = 1
 
 
-class RLARD:  # Advantage Racing Diffusion
+class RLARD(BaseDDM):  # Advantage Racing Diffusion
     def __init__(self):
         self.x1 = 0
         self.x2 = 0
@@ -111,9 +110,6 @@ class RLARD:  # Advantage Racing Diffusion
             x2 += [self.x2]
         return np.array(x1), np.array(x2)
 
-    def noise(self, mean=0, std=0.1):
-        return np.random.normal(mean, std) * np.sqrt(self.dt, dtype=np.float32)
-
     def reset_paramaters(self):
         self.x1 = 0
         self.x2 = 0
@@ -131,8 +127,8 @@ class RLARD:  # Advantage Racing Diffusion
             self.x2 += self.learning_rate * (reward - self.x2)
 
 
-class RLDDM:
-    def __init__(self):
+class RLDDM(BaseDDM):
+    def __init__(self, lr_kappa=0.0):
         self.X = 0
         self.action_time = None
         self.action_side = None  # [-1, 1]
@@ -153,6 +149,8 @@ class RLDDM:
         self.rewards = 0
         self.reward_seq = []
         self.learning_rate = 0.1
+        self.kappa = 0.0
+        self.lr_kappa = lr_kappa
 
     def update_bounds(self):
         self.upper_bound = self.bound * np.exp(
@@ -160,40 +158,35 @@ class RLDDM:
         )
         self.lower_bound = -self.upper_bound
 
-    def step(self):
-        self.X += self.drift_rate * (self.v1 - self.v2) * self.dt + self.noise()
+    def step(self, X_partner=0):
+        coupling = self.kappa * (X_partner - self.X) * self.dt
+        self.X += self.drift_rate * (self.v1 - self.v2) * self.dt + coupling + self.noise()
         self.t += 1
         return self.X
 
     def trial(self):  # Until convergence
         self.reset_paramaters()
         X = [0]
-
         while self.upper_bound > X[-1] > self.lower_bound:
             X += [self.step()]
             self.update_bounds()
         return np.array(X)
 
-    def update_values(self, reward=1):
-        # if self.t within interval reward = 1 else reward = 0
+    def update_values(self, reward):
         self.rewards += reward
         if self.X >= self.upper_bound:
             self.v1 += self.learning_rate * (reward - self.v1)
         elif self.X <= self.lower_bound:
             self.v2 += self.learning_rate * (reward - self.v2)
+        self.kappa += self.lr_kappa * (reward - self.kappa)
         self.reward_seq.append(reward)
 
-    def noise(self, mean=0, std=0.1):
-        return np.random.normal(mean, std) * np.sqrt(self.dt, dtype=np.float32)
-
-    def reset_paramaters(
-        self,
-    ):
+    def reset_paramaters(self):
         self.X = 0
         self.t = 1
 
 
-class MetaRLDDM:
+class MetaRLDDM(BaseDDM):
     def __init__(
         self,
     ):
@@ -254,7 +247,7 @@ class MetaRLDDM:
         self.t = 1
 
 
-class BUSA:
+class BUSA(BaseDDM):
     def __init__(self):
         self.X = 0
         self.v1 = 0.5
@@ -279,9 +272,6 @@ class BUSA:
         while X[-1] < self.bound_left and X[-1] > self.bound_right:
             X += [self.step()]
         return np.array(X)
-
-    def noise(self, mean=0, std=0.1):
-        return np.random.normal(mean, std) * np.sqrt(self.dt, dtype=np.float32)
 
     def reset_parameters(self):
         self.X = 0
